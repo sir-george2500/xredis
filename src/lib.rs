@@ -42,3 +42,83 @@ impl Display for RespMessage {
         }
     }
 }
+
+pub fn parse_resp(input: &[u8]) -> Result<RespMessage, String> {
+    let (msg, remaining) = parse_resp_recursive(input)?;
+    if !remaining.is_empty() {
+        // Optionally, you could return an error if there's extra data,
+        // or ignore it.
+    }
+    Ok(msg)
+}
+
+fn parse_resp_recursive(input: &[u8]) -> Result<(RespMessage, &[u8]), String> {
+    if input.is_empty() {
+        return Err("Empty input".to_string());
+    }
+
+    match input[0] {
+        b'+' => {
+            // Simple String: +<string>\r\n
+            let pos = input
+                .windows(2)
+                .position(|w| w == b"\r\n")
+                .ok_or("Missing CRLF for simple string")?;
+            let s = std::str::from_utf8(&input[1..pos]).map_err(|_| "Invalid UTF-8")?;
+            Ok((RespMessage::SimpleString(s.to_string()), &input[pos + 2..]))
+        }
+        b'-' => {
+            // Error: -<string>\r\n
+            let pos = input
+                .windows(2)
+                .position(|w| w == b"\r\n")
+                .ok_or("Missing CRLF for error message")?;
+            let s = std::str::from_utf8(&input[1..pos]).map_err(|_| "Invalid UTF-8")?;
+            Ok((RespMessage::Error(s.to_string()), &input[pos + 2..]))
+        }
+        b':' => {
+            // Integer: :<number>\r\n
+            let pos = input
+                .windows(2)
+                .position(|w| w == b"\r\n")
+                .ok_or("Missing CRLF for integer")?;
+            let s = std::str::from_utf8(&input[1..pos]).map_err(|_| "Invalid UTF-8")?;
+            let i = s.parse().map_err(|_| "Invalid integer")?;
+            Ok((RespMessage::Integer(i), &input[pos + 2..]))
+        }
+        b'$' => {
+            // Bulk String: $<length>\r\n<data>\r\n
+            let pos = input
+                .windows(2)
+                .position(|w| w == b"\r\n")
+                .ok_or("Missing CRLF in bulk string header")?;
+            let len_str = std::str::from_utf8(&input[1..pos]).map_err(|_| "Invalid UTF-8")?;
+            let len: usize = len_str.parse().map_err(|_| "Invalid bulk string length")?;
+            let start = pos + 2; // skip CRLF
+            let end = start + len;
+            if input.len() < end + 2 || &input[end..end + 2] != b"\r\n" {
+                return Err("Invalid bulk string data".to_string());
+            }
+            let data = input[start..end].to_vec();
+            Ok((RespMessage::BulkString(data), &input[end + 2..]))
+        }
+        b'*' => {
+            // Array: *<number>\r\n<elements...>
+            let pos = input
+                .windows(2)
+                .position(|w| w == b"\r\n")
+                .ok_or("Missing CRLF in array header")?;
+            let count_str = std::str::from_utf8(&input[1..pos]).map_err(|_| "Invalid UTF-8")?;
+            let count: usize = count_str.parse().map_err(|_| "Invalid array length")?;
+            let mut remaining = &input[pos + 2..];
+            let mut elements = Vec::new();
+            for _ in 0..count {
+                let (element, rem) = parse_resp_recursive(remaining)?;
+                elements.push(element);
+                remaining = rem;
+            }
+            Ok((RespMessage::Array(elements), remaining))
+        }
+        _ => Err("Invalid message type".to_string()),
+    }
+}
