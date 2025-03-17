@@ -20,6 +20,7 @@ pub enum RespMessage {
     Array(Vec<RespMessage>),
 }
 
+// Implement the Display trait for the RespMessage enum.
 impl Display for RespMessage {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
@@ -43,11 +44,11 @@ impl Display for RespMessage {
     }
 }
 
+// Implement a function to parse a RESP message from a byte slice.
 pub fn parse_resp(input: &[u8]) -> Result<RespMessage, String> {
     let (msg, remaining) = parse_resp_recursive(input)?;
     if !remaining.is_empty() {
-        // Optionally, you could return an error if there's extra data,
-        // or ignore it.
+        return Err("Trailing data".to_string());
     }
     Ok(msg)
 }
