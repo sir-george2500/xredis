@@ -11,7 +11,7 @@ This enum provides variants for each of these types:
 - `BulkString`: Represents a bulk string (could be null or have actual content), prefixed with `$`.
 - `Array`: Represents an array of RESP messages, prefixed with `*`.
 */
-
+#[derive(Debug, PartialEq)]
 pub enum RespMessage {
     SimpleString(String),
     Error(String),
