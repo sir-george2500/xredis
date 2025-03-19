@@ -14,6 +14,7 @@ pub async fn handle_array_command(vec: Vec<RespMessage>, db: &Db) -> RespMessage
 
         match cmd.as_str() {
             "PING" => RespMessage::SimpleString("PONG".to_string()),
+
             "ECHO" if vec.len() > 1 => {
                 if let RespMessage::BulkString(msg_bytes) = &vec[1] {
                     RespMessage::BulkString(msg_bytes.clone())
@@ -21,6 +22,7 @@ pub async fn handle_array_command(vec: Vec<RespMessage>, db: &Db) -> RespMessage
                     RespMessage::Error("ERR invalid ECHO argument".to_string())
                 }
             }
+
             "SET" if vec.len() > 2 => {
                 if let (RespMessage::BulkString(key_bytes), RespMessage::BulkString(value_bytes)) =
                     (&vec[1], &vec[2])
@@ -33,6 +35,28 @@ pub async fn handle_array_command(vec: Vec<RespMessage>, db: &Db) -> RespMessage
                     RespMessage::Error("ERR invalid SET arguments".to_string())
                 }
             }
+
+            "GET" if vec.len() > 1 => {
+                if let RespMessage::BulkString(key_bytes) = &vec[1] {
+                    let key = String::from_utf8_lossy(key_bytes).to_string();
+                    // Use Option to handle the absence of a key
+                    let response: Option<RespMessage> =
+                        if let Some(value) = db.lock().await.get(&key) {
+                            Some(RespMessage::BulkString(value.as_bytes().to_vec()))
+                        } else {
+                            // If the key doesn't exist, return a detailed error message
+                            None
+                        };
+
+                    // If response is None, return an error with a custom message
+                    response.unwrap_or_else(|| {
+                        RespMessage::Error(format!("ERR key '{}' not found", key))
+                    })
+                } else {
+                    RespMessage::Error("ERR invalid GET argument. Expected key".to_string())
+                }
+            }
+
             _ => RespMessage::Error("ERR unknown command".to_string()),
         }
     } else {

@@ -13,7 +13,7 @@ pub async fn handle_client(mut stream: TcpStream, db: Db) {
 
     while let Ok(n) = stream.read(&mut buf).await {
         if n == 0 {
-            return; // Client closed connection
+            return;
         }
 
         let input = &buf[..n];
