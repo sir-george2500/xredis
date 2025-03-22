@@ -180,6 +180,88 @@ pub async fn handle_array_command(vec: Vec<RespMessage>, db: &Db) -> RespMessage
                 RespMessage::Integer(counter)
             }
 
+            "DEL" if vec.len() > 1 => {
+                let mut counter = 0;
+                let mut db_guard = db.lock().await;
+                for i in 1..vec.len() {
+                    if let RespMessage::BulkString(Some(key_bytes)) = &vec[i] {
+                        let key = String::from_utf8_lossy(key_bytes).to_string();
+                        if db_guard.remove(&key).is_some() {
+                            counter += 1;
+                        }
+                    } else {
+                        return RespMessage::Error("ERR invalid DEL argument".to_string());
+                    }
+                }
+                RespMessage::Integer(counter)
+            }
+
+            "INCR" if vec.len() > 1 => {
+                if let RespMessage::BulkString(Some(key_bytes)) = &vec[1] {
+                    let key = String::from_utf8_lossy(key_bytes).to_string();
+                    let mut db_guard = db.lock().await;
+
+                    if let Some(value_with_expiry) = db_guard.get_mut(&key) {
+                        if let Some(expiry_time) = value_with_expiry.expiry {
+                            let now = SystemTime::now()
+                                .duration_since(UNIX_EPOCH)
+                                .unwrap()
+                                .as_millis();
+                            if now >= expiry_time {
+                                db_guard.remove(&key);
+                                return RespMessage::Error("ERR key has expired".to_string());
+                            }
+                        }
+
+                        let value = value_with_expiry.value.parse::<i64>();
+                        if let Ok(mut value) = value {
+                            value += 1;
+                            value_with_expiry.value = value.to_string();
+                            RespMessage::Integer(value)
+                        } else {
+                            RespMessage::Error("ERR value is not an integer".to_string())
+                        }
+                    } else {
+                        RespMessage::Error("ERR key does not exist".to_string())
+                    }
+                } else {
+                    RespMessage::Error("ERR invalid INC argument".to_string())
+                }
+            }
+
+            "DECR" if vec.len() > 1 => {
+                if let RespMessage::BulkString(Some(key_bytes)) = &vec[1] {
+                    let key = String::from_utf8_lossy(key_bytes).to_string();
+                    let mut db_guard = db.lock().await;
+
+                    if let Some(value_with_expiry) = db_guard.get_mut(&key) {
+                        if let Some(expiry_time) = value_with_expiry.expiry {
+                            let now = SystemTime::now()
+                                .duration_since(UNIX_EPOCH)
+                                .unwrap()
+                                .as_millis();
+                            if now >= expiry_time {
+                                db_guard.remove(&key);
+                                return RespMessage::Error("ERR key has expired".to_string());
+                            }
+                        }
+
+                        let value = value_with_expiry.value.parse::<i64>();
+                        if let Ok(mut value) = value {
+                            value -= 1;
+                            value_with_expiry.value = value.to_string();
+                            RespMessage::Integer(value)
+                        } else {
+                            RespMessage::Error("ERR value is not an integer".to_string())
+                        }
+                    } else {
+                        RespMessage::Error("ERR key does not exist".to_string())
+                    }
+                } else {
+                    RespMessage::Error("ERR invalid DEC argument".to_string())
+                }
+            }
+
             _ => RespMessage::Error("ERR unknown command".to_string()),
         }
     } else {
