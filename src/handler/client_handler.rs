@@ -6,7 +6,9 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
 
-pub type Db = Arc<Mutex<HashMap<String, String>>>;
+use super::value::ValueWithExpiry;
+
+pub type Db = Arc<Mutex<HashMap<String, ValueWithExpiry>>>;
 
 pub async fn handle_client(mut stream: TcpStream, db: Db) {
     let mut buf = vec![0; 1024];

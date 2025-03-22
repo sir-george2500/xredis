@@ -27,7 +27,7 @@ fn test_parse_integer() {
 #[test]
 fn test_parse_bulk_string() {
     let input = b"$6\r\nfoobar\r\n";
-    let expected = RespMessage::BulkString(b"foobar".to_vec());
+    let expected = RespMessage::BulkString(Some(b"foobar".to_vec()));
     let result = parse_resp(input).unwrap();
     assert_eq!(result, expected);
 }
@@ -35,7 +35,15 @@ fn test_parse_bulk_string() {
 #[test]
 fn test_parse_empty_bulk_string() {
     let input = b"$0\r\n\r\n";
-    let expected = RespMessage::BulkString(Vec::new());
+    let expected = RespMessage::BulkString(Some(Vec::new()));
+    let result = parse_resp(input).unwrap();
+    assert_eq!(result, expected);
+}
+
+#[test]
+fn test_parse_null_bulk_string() {
+    let input = b"$-1\r\n";
+    let expected = RespMessage::BulkString(None);
     let result = parse_resp(input).unwrap();
     assert_eq!(result, expected);
 }
@@ -46,7 +54,7 @@ fn test_parse_array() {
     let expected = RespMessage::Array(vec![
         RespMessage::SimpleString("Hello".to_string()),
         RespMessage::Integer(123),
-        RespMessage::BulkString(b"foo".to_vec()),
+        RespMessage::BulkString(Some(b"foo".to_vec())),
     ]);
     let result = parse_resp(input).unwrap();
     assert_eq!(result, expected);
