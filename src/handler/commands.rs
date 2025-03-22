@@ -1,8 +1,9 @@
-use std::time::{SystemTime, UNIX_EPOCH};
-
 use crate::handler::client_handler::Db;
 use crate::handler::value::ValueWithExpiry;
 use crate::resp::resp_protocol::RespMessage;
+use std::fs::File;
+use std::io::Write;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub fn handle_simple_string(cmd: String) -> RespMessage {
     if cmd.to_uppercase() == "PING" {
@@ -394,10 +395,78 @@ pub async fn handle_array_command(vec: Vec<RespMessage>, db: &Db) -> RespMessage
                 }
             }
 
+            "LRANGE" if vec.len() == 4 => {
+                if let (
+                    RespMessage::BulkString(Some(key_bytes)),
+                    RespMessage::BulkString(Some(start_bytes)),
+                    RespMessage::BulkString(Some(stop_bytes)),
+                ) = (&vec[1], &vec[2], &vec[3])
+                {
+                    let key = String::from_utf8_lossy(key_bytes).to_string();
+                    let start = String::from_utf8_lossy(start_bytes)
+                        .parse::<usize>()
+                        .unwrap_or(0);
+                    let stop = String::from_utf8_lossy(stop_bytes)
+                        .parse::<usize>()
+                        .unwrap_or(0);
+                    let mut db_guard = db.lock().await;
+
+                    if let Some(value_with_expiry) = db_guard.get(&key) {
+                        if let Some(expiry_time) = value_with_expiry.expiry {
+                            let now = SystemTime::now()
+                                .duration_since(UNIX_EPOCH)
+                                .unwrap()
+                                .as_millis();
+                            if now >= expiry_time {
+                                db_guard.remove(&key);
+                                return RespMessage::Error("ERR key has expired".to_string());
+                            }
+                        }
+
+                        if let Some(list) = value_with_expiry
+                            .value
+                            .split(",")
+                            .collect::<Vec<&str>>()
+                            .first()
+                        {
+                            let list = list.split(",").collect::<Vec<&str>>();
+                            let mut new_list = vec![];
+                            for i in start..=stop {
+                                if let Some(item) = list.get(i) {
+                                    new_list.push(item.to_string());
+                                }
+                            }
+                            RespMessage::Array(
+                                new_list
+                                    .iter()
+                                    .map(|item| {
+                                        RespMessage::BulkString(Some(item.as_bytes().to_vec()))
+                                    })
+                                    .collect(),
+                            )
+                        } else {
+                            RespMessage::Error("ERR key is not a list".to_string())
+                        }
+                    } else {
+                        RespMessage::Error("ERR key does not exist".to_string())
+                    }
+                } else {
+                    RespMessage::Error("ERR invalid LRANGE argument".to_string())
+                }
+            }
+
+            // let save the database to a file as a JSON object
+            "SAVE" => {
+                let db_guard = db.lock().await;
+                let json = serde_json::to_string(&*db_guard).unwrap();
+                let mut file = File::create("db.json").unwrap();
+                file.write_all(json.as_bytes()).unwrap();
+                RespMessage::SimpleString("OK".to_string())
+            }
+
             _ => RespMessage::Error("ERR unknown command".to_string()),
         }
     } else {
         RespMessage::Error("ERR invalid command format".to_string())
     }
 }
-
