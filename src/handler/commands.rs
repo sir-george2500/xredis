@@ -152,9 +152,38 @@ pub async fn handle_array_command(vec: Vec<RespMessage>, db: &Db) -> RespMessage
                 }
             }
 
+            "EXISTS" if vec.len() > 1 => {
+                let mut counter = 0;
+                let mut db_guard = db.lock().await;
+                for i in 1..vec.len() {
+                    if let RespMessage::BulkString(Some(key_bytes)) = &vec[i] {
+                        let key = String::from_utf8_lossy(key_bytes).to_string();
+                        if let Some(value_with_expiry) = db_guard.get(&key) {
+                            if let Some(expiry_time) = value_with_expiry.expiry {
+                                let now = SystemTime::now()
+                                    .duration_since(UNIX_EPOCH)
+                                    .unwrap()
+                                    .as_millis();
+                                if now < expiry_time {
+                                    counter += 1;
+                                } else {
+                                    db_guard.remove(&key);
+                                }
+                            } else {
+                                counter += 1;
+                            }
+                        }
+                    } else {
+                        return RespMessage::Error("ERR invalid EXISTS argument".to_string());
+                    }
+                }
+                RespMessage::Integer(counter)
+            }
+
             _ => RespMessage::Error("ERR unknown command".to_string()),
         }
     } else {
         RespMessage::Error("ERR invalid command format".to_string())
     }
 }
+
