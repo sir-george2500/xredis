@@ -459,7 +459,7 @@ pub async fn handle_array_command(vec: Vec<RespMessage>, db: &Db) -> RespMessage
             "SAVE" => {
                 let db_guard = db.lock().await;
                 let json = serde_json::to_string(&*db_guard).unwrap();
-                let mut file = File::create("db.json").unwrap();
+                let mut file = File::create("xredisDB.json").unwrap();
                 file.write_all(json.as_bytes()).unwrap();
                 RespMessage::SimpleString("OK".to_string())
             }
