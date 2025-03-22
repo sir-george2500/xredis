@@ -262,6 +262,138 @@ pub async fn handle_array_command(vec: Vec<RespMessage>, db: &Db) -> RespMessage
                 }
             }
 
+            "LPUSH" if vec.len() > 1 => {
+                if let RespMessage::BulkString(Some(key_bytes)) = &vec[1] {
+                    let key = String::from_utf8_lossy(key_bytes).to_string();
+                    let mut db_guard = db.lock().await;
+
+                    if let Some(value_with_expiry) = db_guard.get_mut(&key) {
+                        if let Some(expiry_time) = value_with_expiry.expiry {
+                            let now = SystemTime::now()
+                                .duration_since(UNIX_EPOCH)
+                                .unwrap()
+                                .as_millis();
+                            if now >= expiry_time {
+                                db_guard.remove(&key);
+                                return RespMessage::Error("ERR key has expired".to_string());
+                            }
+                        }
+
+                        if let Some(list) = value_with_expiry
+                            .value
+                            .split(",")
+                            .collect::<Vec<&str>>()
+                            .first()
+                        {
+                            let mut new_list = vec![];
+                            for i in 2..vec.len() {
+                                if let RespMessage::BulkString(Some(item_bytes)) = &vec[i] {
+                                    let item = String::from_utf8_lossy(item_bytes).to_string();
+                                    new_list.insert(0, item);
+                                } else {
+                                    return RespMessage::Error(
+                                        "ERR invalid LPUSH argument".to_string(),
+                                    );
+                                }
+                            }
+                            new_list.push(list.to_string());
+                            value_with_expiry.value = new_list.join(",");
+                            RespMessage::Integer(new_list.len() as i64)
+                        } else {
+                            RespMessage::Error("ERR key is not a list".to_string())
+                        }
+                    } else {
+                        let mut new_list = vec![];
+                        for i in 2..vec.len() {
+                            if let RespMessage::BulkString(Some(item_bytes)) = &vec[i] {
+                                let item = String::from_utf8_lossy(item_bytes).to_string();
+                                new_list.push(item);
+                            } else {
+                                return RespMessage::Error(
+                                    "ERR invalid LPUSH argument".to_string(),
+                                );
+                            }
+                        }
+                        db_guard.insert(
+                            key,
+                            ValueWithExpiry {
+                                value: new_list.join(","),
+                                expiry: None,
+                            },
+                        );
+                        RespMessage::Integer(new_list.len() as i64)
+                    }
+                } else {
+                    RespMessage::Error("ERR invalid LPUSH argument".to_string())
+                }
+            }
+
+            "RPUSH" if vec.len() > 1 => {
+                if let RespMessage::BulkString(Some(key_bytes)) = &vec[1] {
+                    let key = String::from_utf8_lossy(key_bytes).to_string();
+                    let mut db_guard = db.lock().await;
+
+                    if let Some(value_with_expiry) = db_guard.get_mut(&key) {
+                        if let Some(expiry_time) = value_with_expiry.expiry {
+                            let now = SystemTime::now()
+                                .duration_since(UNIX_EPOCH)
+                                .unwrap()
+                                .as_millis();
+                            if now >= expiry_time {
+                                db_guard.remove(&key);
+                                return RespMessage::Error("ERR key has expired".to_string());
+                            }
+                        }
+
+                        if let Some(list) = value_with_expiry
+                            .value
+                            .split(",")
+                            .collect::<Vec<&str>>()
+                            .first()
+                        {
+                            let mut new_list = vec![];
+                            for i in 2..vec.len() {
+                                if let RespMessage::BulkString(Some(item_bytes)) = &vec[i] {
+                                    let item = String::from_utf8_lossy(item_bytes).to_string();
+                                    new_list.push(item);
+                                } else {
+                                    return RespMessage::Error(
+                                        "ERR invalid RPUSH argument".to_string(),
+                                    );
+                                }
+                            }
+                            new_list.insert(0, list.to_string());
+                            value_with_expiry.value = new_list.join(",");
+                            RespMessage::Integer(new_list.len() as i64)
+                        } else {
+                            RespMessage::Error("ERR key is not a list".to_string())
+                        }
+                    } else {
+                        let mut new_list = vec![];
+                        for i in 2..vec.len() {
+                            if let RespMessage::BulkString(Some(item_bytes)) = &vec[i] {
+                                let item = String::from_utf8_lossy(item_bytes).to_string();
+                                new_list.push(item);
+                            } else {
+                                return RespMessage::Error(
+                                    "ERR invalid RPUSH argument".to_string(),
+                                );
+                            }
+                        }
+                        db_guard.insert(
+                            key,
+                            ValueWithExpiry {
+                                value: new_list.join(","),
+                                expiry: None,
+                            },
+                        );
+                        RespMessage::Integer(new_list.len() as i64)
+                    }
+                } else {
+                    RespMessage::Error("ERR invalid RPUSH argument".to_string())
+                }
+            }
+
             _ => RespMessage::Error("ERR unknown command".to_string()),
         }
     } else {
